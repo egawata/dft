@@ -20,6 +20,13 @@ typedef struct _freqdata {
 } Freqdata;
 
 
+typedef struct _freqdata_list {
+    long        num_sample;
+    int         interval;
+    GPtrArray   *list;
+} FreqdataList;
+
+
 Ampdata *ampdata_new(void) {
     Ampdata *data = malloc(sizeof(Ampdata));
     if (!data) {
@@ -113,18 +120,27 @@ void print_g_ptr_array(GPtrArray *array)
     }
 }
 
-GPtrArray *read_file(const char *filename) 
+void read_file(const char *filename, FreqdataList *fl) 
 {
     FILE *fp;
-    GPtrArray *freqdata_list = g_ptr_array_new_with_free_func(g_freqdata_free);
+    char buf[256];
+
+    fl->list = g_ptr_array_new_with_free_func(g_freqdata_free);
 
     if (!(fp = fopen(filename, "r"))) {
         fprintf(stderr, "Failed to open file %s\n", filename);
         exit(EXIT_FAILURE);
     }
 
+    //  総サンプル数
+    fgets(buf, 256, fp);
+    fl->num_sample = atol(buf);
+
+    //  サンプル間隔
+    fgets(buf, 256, fp);
+    fl->interval = atoi(buf);
+
     while(1) {
-        char buf[256];
         
         if ( !fgets(buf, 256, fp) ) {
             if (feof(fp)) 
@@ -154,7 +170,7 @@ GPtrArray *read_file(const char *filename)
                 g_ptr_array_add(freqdata->ampdata_ary, (gpointer)ampdata);
             }
 
-            g_ptr_array_add(freqdata_list, (gpointer)freqdata);
+            g_ptr_array_add(fl->list, (gpointer)freqdata);
 
         } else {
             fprintf(stderr, "Invalid format %s\n", buf);
@@ -162,10 +178,9 @@ GPtrArray *read_file(const char *filename)
         }
     }
 
-    print_g_ptr_array(freqdata_list);
+    print_g_ptr_array(fl->list);
 
     fclose(fp);
-    return freqdata_list;
 }
 
 
@@ -190,7 +205,7 @@ static void set_gc_color(GdkGC *gc, guint16 red, guint16 green, guint16 blue)
 static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer data)
 {
     GdkGC       *gc;
-    GPtrArray   *freqdata_list = (GPtrArray *)data;
+    FreqdataList *fl = (FreqdataList *)data;
 
     gc = gdk_gc_new(graph->window);
 
@@ -212,24 +227,29 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
     );
     
     //  音を描画していく
-    Freqdata *last_freq = g_ptr_array_index(freqdata_list, freqdata_list->len - 1);
-    long last_sample_point = last_freq->sample_point;
-
     int f, a;
-    for (f=0; f < freqdata_list->len; f++) {
-        Freqdata *freq = g_ptr_array_index(freqdata_list, f);
+    for (f=0; f < fl->list->len; f++) {
+        Freqdata *freq = g_ptr_array_index(fl->list, f);
     
         for (a=0; a < freq->ampdata_ary->len; a++) {
             Ampdata *amp = g_ptr_array_index(freq->ampdata_ary, a);
     
-            set_gc_color(gc, 65535, 40000, 40000);
+            //  音量が強いほど原色に近くする
+            int red     = 65535 - (amp->amp * 30000);
+            int green   = 65535 - (amp->amp * 15000);
+            int blue    = 65535 - (amp->amp * 30000); 
+            if (red   < 0)  red   = 0;
+            if (green < 0)  green = 0;
+            if (blue  < 0)  blue  = 0;
+            set_gc_color(gc, red, green, blue);
+            
             gdk_draw_rectangle( graph->window, 
                                 gc, 
                                 TRUE,
-                                freq->sample_point * 600 / last_sample_point,
+                                freq->sample_point * 600 / fl->num_sample,
                                 - (amp->freq - 600) ,
-                                amp->amp * 5,
-                                amp->amp * 5
+                                fl->interval * 600 / fl->num_sample,
+                                3
             );
         }
     }
@@ -243,8 +263,9 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
 int main(int argc, char *argv[])
 {
     GtkWidget *window, *graph;
+    FreqdataList fl;
 
-    GPtrArray *freqdata_list = read_file(argv[1]);
+    read_file(argv[1], &fl);
 
     gtk_init(&argc, &argv);
 
@@ -257,13 +278,13 @@ int main(int argc, char *argv[])
 
     graph = gtk_drawing_area_new();
     g_signal_connect(G_OBJECT(graph), "expose_event",
-                     G_CALLBACK(draw_graph), (gpointer)freqdata_list);
+                     G_CALLBACK(draw_graph), (gpointer)&fl);
     gtk_container_add(GTK_CONTAINER(window), graph);
     gtk_widget_show_all(window);
 
     gtk_main();
 
-    g_ptr_array_free(freqdata_list, TRUE);
+    g_ptr_array_free(fl.list, TRUE);
     return 0;
 }
 
