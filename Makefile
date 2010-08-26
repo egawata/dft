@@ -12,4 +12,5 @@ wavfile.o:	wavfile.h wavfile.c
 	$(CC) $(OPTION) -c wavfile.c
 
 fgraph: freqgraph.c
-	$(CC) $(OPTION) $(GTKOPT) -o freqgraph freqgraph.c  
+	$(CC) $(OPTION) -lm $(GTKOPT) -o freqgraph freqgraph.c  
+	 

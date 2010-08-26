@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <math.h>
 
 typedef struct _ampdata {
     int     freq;
@@ -202,6 +202,75 @@ static void set_gc_color(GdkGC *gc, guint16 red, guint16 green, guint16 blue)
 }
 
 
+/*
+ *  音程を表すガイド線を引く
+ *
+ *    C の位置に濃い横線、
+ *    D, E, F, G, A, B の位置に薄い横線を引く。
+ *
+ *    各音程の周波数は A=55 * octave Hz を基準にする。
+ *
+ */ 
+static void draw_tone_lines(GtkWidget *graph) 
+{
+    GdkGC *gc = gdk_gc_new(graph->window);
+
+    //  表示する周波数の範囲。
+    //  TODO: あとで引数で指定するようにする
+    int hz_low_limit  = 200;
+    int hz_high_limit = 600;
+
+    //  表示領域の水平座標の範囲
+    //  TODO: あとで引数で指定できるようにする
+    int screen_left   =   0;
+    int screen_right  = 599;
+
+    //  表示領域の垂直座標の範囲
+    //  TODO: あとで引数で指定できるようにする
+    int screen_top    =   0;
+    int screen_bottom = 399;
+
+    const int HZ_A1 = 55;   //  一番低い A の音
+    const double HALFTONE = 1.0594630943593;   //  半音上の音との周波数比率
+
+    //  表示領域の下限より下の、もっとも下限に近い A の周波数を求める
+    double hz_a = HZ_A1;
+    while (hz_a * 2 < hz_low_limit)
+        hz_a *= 2;
+
+    int guide_tone[] = { 0, 2, 3, 5, 7, 8, 10 }; 
+    while (hz_a <= hz_high_limit) {
+        int t;
+        for (t = 0; t < 7; t++) {
+            //  C なら濃い色、それ以外は薄い線
+            if (t == 2)
+                set_gc_color(gc, 40000, 40000, 40000);
+            else 
+                set_gc_color(gc, 55000, 55000, 55000);
+            
+            double hz_curr = hz_a * pow( HALFTONE, guide_tone[t] );
+             
+            //  周波数を、画面上のy座標に変換
+            int y =   (   (hz_curr - hz_low_limit ) * screen_top
+                        - (hz_curr - hz_high_limit) * screen_bottom )
+                    / (hz_high_limit - hz_low_limit);
+            if ( y <= screen_bottom && y >= screen_top ) {
+                gdk_draw_line( graph->window, gc,
+                        screen_left, y,
+                        screen_right, y
+                );
+            } else if ( y < screen_top ) {
+                //  上限まで描き終えたので、これ以上は描画の必要はない
+                break;
+            }
+        } 
+        hz_a *= 2;  //  基準のAを1オクターブ上げる
+    }
+
+    g_object_unref(gc);
+}
+
+
 static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer data)
 {
     GdkGC       *gc;
@@ -218,13 +287,8 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
                         600, 400    //  width, height
     );
 
-    //  (0,200)-(599,200) にグレーのラインを引く
-    set_gc_color(gc, 32768, 32768, 32768);
-    gdk_draw_line( graph->window, 
-                   gc,
-                   0, 200,
-                   599, 200
-    );
+    //  基準音にグレーのラインを引く
+    draw_tone_lines(graph);
     
     //  音を描画していく
     int f, a;
