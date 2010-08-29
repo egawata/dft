@@ -7,6 +7,10 @@
 #include <string.h>
 #include <math.h>
 
+#define HZ_TOP  600
+#define ZOOM    200
+
+
 typedef struct _ampdata {
     int     freq;
     double  amp;
@@ -203,6 +207,25 @@ static void set_gc_color(GdkGC *gc, guint16 red, guint16 green, guint16 blue)
 
 
 /*
+ *  特定の周波数の、画面上のy座標を求める
+ *
+ *  　y座標は、画面上端の周波数(hz_top)、ズームレベル(zoom)、
+ *    およびy座標を求めたい周波数(hz_req)から
+ *  　導くことができる。
+ */ 
+static double get_y_from_hz(double hz_req, double hz_top, double zoom) {
+    return zoom * ( (log(hz_top) - log(hz_req)) / log(2) );
+}
+
+/*
+ *  特定のy座標が表す周波数を求める
+ *    get_y_from_hz の逆を行えばよい。
+ */
+static double get_hz_from_y(double y, double hz_top, double zoom) {
+    return log(hz_top) - ( y * log(2) ) / zoom ;
+}
+
+/*
  *  音程を表すガイド線を引く
  *
  *    C の位置に濃い横線、
@@ -210,15 +233,12 @@ static void set_gc_color(GdkGC *gc, guint16 red, guint16 green, guint16 blue)
  *
  *    各音程の周波数は A=55 * octave Hz を基準にする。
  *
+ *    hz_high_limit : 画面上端の周波数
+ *    zoom : 拡大率。1オクターブを画面上のpix数で表したもの
  */ 
-static void draw_tone_lines(GtkWidget *graph) 
+static void draw_tone_lines(GtkWidget *graph, int hz_high_limit, int zoom) 
 {
     GdkGC *gc = gdk_gc_new(graph->window);
-
-    //  表示する周波数の範囲。
-    //  TODO: あとで引数で指定するようにする
-    int hz_low_limit  = 200;
-    int hz_high_limit = 600;
 
     //  表示領域の水平座標の範囲
     //  TODO: あとで引数で指定できるようにする
@@ -229,6 +249,9 @@ static void draw_tone_lines(GtkWidget *graph)
     //  TODO: あとで引数で指定できるようにする
     int screen_top    =   0;
     int screen_bottom = 399;
+
+    //  画面下端の周波数を求める
+    int hz_low_limit  = get_hz_from_y(screen_bottom - screen_top, hz_high_limit, zoom);
 
     const int HZ_A1 = 55;   //  一番低い A の音
     const double HALFTONE = 1.0594630943593;   //  半音上の音との周波数比率
@@ -251,9 +274,7 @@ static void draw_tone_lines(GtkWidget *graph)
             double hz_curr = hz_a * pow( HALFTONE, guide_tone[t] );
              
             //  周波数を、画面上のy座標に変換
-            int y =   (   (hz_curr - hz_low_limit ) * screen_top
-                        - (hz_curr - hz_high_limit) * screen_bottom )
-                    / (hz_high_limit - hz_low_limit);
+            int y = get_y_from_hz(hz_curr, hz_high_limit, zoom);
             if ( y <= screen_bottom && y >= screen_top ) {
                 gdk_draw_line( graph->window, gc,
                         screen_left, y,
@@ -288,7 +309,7 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
     );
 
     //  基準音にグレーのラインを引く
-    draw_tone_lines(graph);
+    draw_tone_lines(graph, HZ_TOP, ZOOM);
     
     //  音を描画していく
     int f, a;
@@ -311,7 +332,7 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
                                 gc, 
                                 TRUE,
                                 freq->sample_point * 600 / fl->num_sample,
-                                - (amp->freq - 600) ,
+                                get_y_from_hz(amp->freq, HZ_TOP, ZOOM),
                                 fl->interval * 600 / fl->num_sample,
                                 3
             );
