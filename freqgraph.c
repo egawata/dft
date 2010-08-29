@@ -242,13 +242,15 @@ static void draw_tone_lines(GtkWidget *graph, int hz_high_limit, int zoom)
 
     //  表示領域の水平座標の範囲
     //  TODO: あとで引数で指定できるようにする
-    int screen_left   =   0;
-    int screen_right  = 599;
+    gint screen_left   =   0;
+    gint screen_right;
 
     //  表示領域の垂直座標の範囲
     //  TODO: あとで引数で指定できるようにする
-    int screen_top    =   0;
-    int screen_bottom = 399;
+    gint screen_top    =   0;
+    gint screen_bottom;
+
+    gdk_drawable_get_size(graph->window, &screen_right, &screen_bottom);
 
     //  画面下端の周波数を求める
     int hz_low_limit  = get_hz_from_y(screen_bottom - screen_top, hz_high_limit, zoom);
@@ -297,6 +299,9 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
     GdkGC       *gc;
     FreqdataList *fl = (FreqdataList *)data;
 
+    gint width, height;
+    gdk_drawable_get_size(graph->window, &width, &height);
+
     gc = gdk_gc_new(graph->window);
 
     //　全体を白で塗りつぶす
@@ -305,7 +310,7 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
                         gc,
                         TRUE,       //  filled
                         0, 0,       //  x, y
-                        600, 400    //  width, height
+                        width, height //  width, height
     );
 
     //  基準音にグレーのラインを引く
@@ -331,9 +336,9 @@ static gboolean draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer dat
             gdk_draw_rectangle( graph->window, 
                                 gc, 
                                 TRUE,
-                                freq->sample_point * 600 / fl->num_sample,
+                                freq->sample_point * 800 / fl->num_sample,
                                 get_y_from_hz(amp->freq, HZ_TOP, ZOOM),
-                                fl->interval * 600 / fl->num_sample,
+                                fl->interval * 800 / fl->num_sample,
                                 3
             );
         }
