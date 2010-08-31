@@ -15,6 +15,7 @@
 
 typedef struct _graphview {
     FreqdataList    *samples;                   // 　サンプルデータ全体
+    gdouble         maxamp;                    //　サンプル内の最大音量
     gdouble         screen_top_hzlog2;          //  画面上端の周波数(2の対数)
     glong           screen_left_samplepoint;    //  画面左端のサンプルポイント
     gdouble         zoom_x;                     //   x軸ズームレベル(pixel/sample)

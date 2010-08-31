@@ -24,14 +24,14 @@
 #define HZ_TOP_INIT         600
 #define HZ_LOG2_TOP_INIT    log2(HZ_TOP_INIT)
 
-#define H_STEP_INCREMENT    100
-#define H_PAGE_INCREMENT    300
+#define H_STEP_INCREMENT    1000
+#define H_PAGE_INCREMENT    3000
 #define H_PAGE_SIZE         600
 #define H_INIT_VALUE        0
 
 #define V_STEP_INCREMENT    -0.1
 #define V_PAGE_INCREMENT    -0.5
-#define V_PAGE_SIZE         log2(HZ_TOP_INIT)-log2(HZ_TOP_INIT-400)
+#define V_PAGE_SIZE         2     //log2(HZ_TOP_INIT)-log2(HZ_TOP_INIT-400)
 #define V_INIT_VALUE        HZ_LOG2_TOP_INIT
 
 
@@ -77,7 +77,7 @@ void _init_hadjustment(GraphView *gv)
         = gtk_scrolled_window_get_hadjustment(GTK_SCROLLED_WINDOW(gv->swin));
     
     gtk_adjustment_set_lower(horizontal, 0);
-    //gtk_adjustment_set_upper();   上限は設定しない
+    gtk_adjustment_set_upper(horizontal, 160000);
     gtk_adjustment_set_step_increment(horizontal, H_STEP_INCREMENT);
     gtk_adjustment_set_page_increment(horizontal, H_PAGE_INCREMENT);
     gtk_adjustment_set_page_size(horizontal, H_PAGE_SIZE);
@@ -92,8 +92,8 @@ void _init_vadjustment(GraphView *gv)
     GtkAdjustment *vertical 
         = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(gv->swin));
     
-    gtk_adjustment_set_lower(vertical, 0);
-    //gtk_adjustment_set_upper();   上限は設定しない
+    gtk_adjustment_set_lower(vertical, 7);
+    gtk_adjustment_set_upper(vertical, 20);
     gtk_adjustment_set_step_increment(vertical, V_STEP_INCREMENT);
     gtk_adjustment_set_page_increment(vertical, V_PAGE_INCREMENT);
     gtk_adjustment_set_page_size(vertical, V_PAGE_SIZE);
@@ -213,29 +213,33 @@ static gboolean _draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer _g
     
     //  音を描画していく
     int f, a;
-    for (f=0; f < samples->list->len; f++) {
+    int sp_index_start = floor( gv->screen_left_samplepoint / samples->interval );
+    for (f = sp_index_start; f < samples->list->len; f++) {
         Freqdata *freq = g_ptr_array_index(samples->list, f);
     
         for (a=0; a < freq->ampdata_ary->len; a++) {
             Ampdata *amp = g_ptr_array_index(freq->ampdata_ary, a);
     
             //  音量が強いほど原色に近くする
-            int red     = 65535 - (amp->amp * 30000);
-            int green   = 65535 - (amp->amp * 15000);
-            int blue    = 65535 - (amp->amp * 30000); 
-            if (red   < 0)  red   = 0;
-            if (green < 0)  green = 0;
-            if (blue  < 0)  blue  = 0;
-            _set_gc_color(gc, red, green, blue);
-            
-            gdk_draw_rectangle( graph->window, 
-                                gc, 
-                                TRUE,
-                                freq->sample_point * gv->zoom_x,
-                                _get_y_from_hz(gv, amp->freq),
-                                samples->interval * gv->zoom_x,
-                                3
-            );
+            if (amp->amp > gv->maxamp / 3) {
+                int red     = 65535 - floor(amp->amp * 65535 / gv->maxamp);
+                int green   = 65535 - floor(amp->amp * 30000 / gv->maxamp);
+                int blue    = 65535 - floor(amp->amp * 65535 / gv->maxamp);
+                if (red   < 0)  red   = 0;
+                if (green < 0)  green = 0;
+                if (blue  < 0)  blue  = 0;
+                
+                _set_gc_color(gc, red, green, blue);
+                
+                gdk_draw_rectangle( graph->window, 
+                                    gc, 
+                                    TRUE,
+                                    (freq->sample_point - gv->screen_left_samplepoint) * gv->zoom_x,
+                                    _get_y_from_hz(gv, amp->freq),
+                                    samples->interval * gv->zoom_x,
+                                    3
+                );
+            }
         }
     }
 
@@ -278,8 +282,9 @@ GraphView *graphview_new(GtkWidget *window)
     g_signal_connect(G_OBJECT(gv->graph), "expose_event",
                      G_CALLBACK(_draw_graph), (gpointer)gv );
     
-    gtk_scrolled_window_add_with_viewport(
-            GTK_SCROLLED_WINDOW(gv->swin), gv->graph ); 
+    //gtk_scrolled_window_add_with_viewport(
+    //        GTK_SCROLLED_WINDOW(gv->swin), gv->graph ); 
+    gtk_container_add(GTK_CONTAINER(gv->swin), gv->graph);
     if (window) {
         gtk_container_add(GTK_CONTAINER(window), gv->swin);
     }
@@ -289,6 +294,26 @@ GraphView *graphview_new(GtkWidget *window)
     _init_vadjustment(gv);
 
     return gv;
+}
+
+
+double _get_maxamp(FreqdataList *sample)
+{
+    double max = 0.00;
+    int f, a;
+    
+    GPtrArray *flist = sample->list;
+    for (f=0; f < flist->len; f++) {
+        Freqdata *fdata = g_ptr_array_index( flist, f );
+        GPtrArray *alist = fdata->ampdata_ary;
+        for (a=0; a < alist->len; a++) {
+            Ampdata *adata = g_ptr_array_index( alist, a );
+            if (max < fabs(adata->amp)) 
+                max = fabs(adata->amp);
+        }
+    }
+
+    return max;
 }
 
 
@@ -304,6 +329,12 @@ GraphView *graphview_new(GtkWidget *window)
 void graphview_set_sample_data(GraphView *gv, FreqdataList *sample)
 {
     gv->samples = sample;
+
+    GtkAdjustment *horizontal 
+        = gtk_scrolled_window_get_hadjustment( GTK_SCROLLED_WINDOW(gv->swin) );
+    gtk_adjustment_set_upper(horizontal, sample->num_sample);
+
+    gv->maxamp = _get_maxamp(sample);
 }
     
 

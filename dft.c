@@ -40,7 +40,7 @@
 
 //  出力対象の音量のしきい値。
 //  これを超える音量を持つ結果のみ出力される。
-#define MIN_AMP     0.5 
+#define MIN_AMP     0.01
 
 
 void dft(short *sample, size_t num_sample, double *result, double max_freq, double delta) 
