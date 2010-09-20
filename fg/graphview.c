@@ -16,21 +16,22 @@
 
 #define log2(x)     log(x)/log(2)
 
-#define SCREEN_TOP_HZLOG2   11.0
-#define SCREEN_LEFT_SAMPLEPOINT    0
+#define SCREEN_TOP_HZLOG2           14.0
+#define SCREEN_BOTTOM_HZLOG2        5.0
+#define SCREEN_LEFT_SAMPLEPOINT     0
 #define ZOOM_X              0.0025
 #define ZOOM_Y              200
 
 #define HZ_TOP_INIT         600
 #define HZ_LOG2_TOP_INIT    log2(HZ_TOP_INIT)
 
-#define H_STEP_INCREMENT    1000
-#define H_PAGE_INCREMENT    3000
+#define H_STEP_INCREMENT    10000
+#define H_PAGE_INCREMENT    30000
 #define H_PAGE_SIZE         600
 #define H_INIT_VALUE        0
 
-#define V_STEP_INCREMENT    -0.1
-#define V_PAGE_INCREMENT    -0.5
+#define V_STEP_INCREMENT    0.1
+#define V_PAGE_INCREMENT    0.5
 #define V_PAGE_SIZE         2     //log2(HZ_TOP_INIT)-log2(HZ_TOP_INIT-400)
 #define V_INIT_VALUE        HZ_LOG2_TOP_INIT
 
@@ -64,7 +65,7 @@ static void _vertical_changed(GtkAdjustment *vertical, GraphView *gv)
     gint width, height;
     gdk_drawable_get_size(gv->graph->window, &width, &height);
 
-    gv->screen_top_hzlog2 = gtk_adjustment_get_value(vertical);
+    gv->screen_top_hzlog2 = SCREEN_TOP_HZLOG2 - gtk_adjustment_get_value(vertical) + SCREEN_BOTTOM_HZLOG2;
     gtk_widget_queue_draw_area(gv->graph, 0, 0, width, height);
 }
 
@@ -92,8 +93,8 @@ void _init_vadjustment(GraphView *gv)
     GtkAdjustment *vertical 
         = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(gv->swin));
     
-    gtk_adjustment_set_lower(vertical, 7);
-    gtk_adjustment_set_upper(vertical, 20);
+    gtk_adjustment_set_lower(vertical, SCREEN_BOTTOM_HZLOG2);
+    gtk_adjustment_set_upper(vertical, SCREEN_TOP_HZLOG2);
     gtk_adjustment_set_step_increment(vertical, V_STEP_INCREMENT);
     gtk_adjustment_set_page_increment(vertical, V_PAGE_INCREMENT);
     gtk_adjustment_set_page_size(vertical, V_PAGE_SIZE);
@@ -139,8 +140,8 @@ static void _draw_tone_lines(GraphView *gv)
     //  画面に表示される周波数の下限
     //  １より小さい場合は、1を下限とする。
     double hzlog2_low_limit = gv->screen_top_hzlog2 - (screen_bottom - screen_top) / gv->zoom_y;
-    if (hzlog2_low_limit < 1.0) 
-        hzlog2_low_limit = 1.0;
+    if (hzlog2_low_limit < SCREEN_BOTTOM_HZLOG2) 
+        hzlog2_low_limit = SCREEN_BOTTOM_HZLOG2;
     
     int hz_low_limit  = pow(2.0, hzlog2_low_limit) ;
 
@@ -219,12 +220,19 @@ static gboolean _draw_graph(GtkWidget *graph, GdkEventExpose *event, gpointer _g
     
         for (a=0; a < freq->ampdata_ary->len; a++) {
             Ampdata *amp = g_ptr_array_index(freq->ampdata_ary, a);
+   
+            //  TODO: 
+            double _amp = amp->amp;
+            double _maxamp = gv->maxamp;
+            if (_amp > 0.1) _amp = 0.1;
+            if (_maxamp > 0.1) _maxamp = 0.1;
+            //
     
             //  音量が強いほど原色に近くする
-            if (amp->amp > gv->maxamp / 3) {
-                int red     = 65535 - floor(amp->amp * 65535 / gv->maxamp);
-                int green   = 65535 - floor(amp->amp * 30000 / gv->maxamp);
-                int blue    = 65535 - floor(amp->amp * 65535 / gv->maxamp);
+            if (_amp > _maxamp / 3) {
+                int red     = 65535 - floor(_amp * 65535 / _maxamp);
+                int green   = 65535 - floor(_amp * 30000 / _maxamp);
+                int blue    = 65535 - floor(_amp * 65535 / _maxamp);
                 if (red   < 0)  red   = 0;
                 if (green < 0)  green = 0;
                 if (blue  < 0)  blue  = 0;
@@ -278,7 +286,7 @@ GraphView *graphview_new(GtkWidget *window)
 
     //　描画エリアの生成
     gv->graph = gtk_drawing_area_new();
-    gtk_widget_set_size_request(gv->graph, 640, 400);
+    //gtk_widget_set_size_request(gv->graph, 640, 400);
     g_signal_connect(G_OBJECT(gv->graph), "expose_event",
                      G_CALLBACK(_draw_graph), (gpointer)gv );
     
@@ -328,6 +336,7 @@ double _get_maxamp(FreqdataList *sample)
  */ 
 void graphview_set_sample_data(GraphView *gv, FreqdataList *sample)
 {
+    gint width, height;
     gv->samples = sample;
 
     GtkAdjustment *horizontal 
@@ -335,6 +344,11 @@ void graphview_set_sample_data(GraphView *gv, FreqdataList *sample)
     gtk_adjustment_set_upper(horizontal, sample->num_sample);
 
     gv->maxamp = _get_maxamp(sample);
+    
+    //  サンプルデータに合わせてDrawingAreaの大きさを変える
+    width  = (sample->num_sample * sample->interval) * ZOOM_X;
+    height = (SCREEN_TOP_HZLOG2 - SCREEN_BOTTOM_HZLOG2) * ZOOM_Y; 
+    gtk_widget_set_size_request(gv->graph, width, height);
 }
     
 
